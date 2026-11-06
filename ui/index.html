@@ -1,0 +1,1135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hindsight</title>
+<style>
+@font-face {
+  font-family: "Bricolage";
+  src: url("bricolage.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: block;
+}
+:root {
+  --ink: #15121f;
+  --surface: #1d1a2c;
+  --raised: #28233b;
+  --raised-2: #322c49;
+  --line: #2f2944;
+  --line-strong: #40395c;
+  --text: #ece9f5;
+  --muted: #9b95b4;
+  --faint: #6c6688;
+  --amber: #ffb347;
+  --amber-deep: #ff8a3d;
+  --amber-ink: #2a1a05;
+  --rec: #ff5f6d;
+  --good: #7fdcae;
+  --display: "Bricolage", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --body: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--ink); color: var(--text); font: 14px/1.45 var(--body); overflow: hidden; -webkit-font-smoothing: antialiased; user-select: none; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 6px; }
+[hidden] { display: none !important; }
+a { color: var(--amber); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.muted { color: var(--muted); }
+
+/* ---------- title bar ---------- */
+.titlebar { height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 6px 0 16px; border-bottom: 1px solid var(--line); }
+.titlebar .drag { flex: 1; align-self: stretch; app-region: drag; -webkit-app-region: drag; }
+.titlebar button { app-region: no-drag; -webkit-app-region: no-drag; }
+.brand { display: flex; align-items: center; gap: 10px; font: 600 15px var(--display); letter-spacing: -0.01em; }
+.brand img { width: 22px; height: 22px; }
+.pill { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.pill[data-state="buffering"] { color: var(--text); }
+.pill[data-state="buffering"] .dot { background: var(--rec); box-shadow: 0 0 0 0 rgba(255,95,109,.6); animation: pulse 2s infinite; }
+.pill[data-state="starting"] .dot, .pill[data-state="restarting"] .dot { background: var(--amber); }
+.pill[data-state="error"] .dot { background: var(--rec); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,95,109,.55); } 70% { box-shadow: 0 0 0 7px rgba(255,95,109,0); } 100% { box-shadow: 0 0 0 0 rgba(255,95,109,0); } }
+.winbtn { width: 40px; height: 32px; border: 0; background: transparent; border-radius: 7px; display: grid; place-items: center; color: var(--muted); }
+.winbtn:hover { background: var(--surface); color: var(--text); }
+.winbtn.close:hover { background: #c4314b; color: #fff; }
+
+/* ---------- shell ---------- */
+#app { display: grid; grid-template-rows: 44px 1fr; height: 100%; }
+.shell { display: grid; grid-template-columns: 216px 1fr; min-height: 0; }
+.side { border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 9px; border: 0; background: transparent; color: var(--muted); text-align: left; font-size: 14px; }
+.nav svg { width: 18px; height: 18px; flex: none; }
+.nav:hover { color: var(--text); background: rgba(255,255,255,.03); }
+.nav[aria-current="page"] { background: var(--surface); color: var(--text); }
+.nav[aria-current="page"] svg { color: var(--amber); }
+.nav .count { margin-left: auto; font-size: 12px; font-style: normal; color: var(--faint); }
+.side .spacer { flex: 1; }
+.rec-card { border-radius: 12px; background: var(--surface); padding: 12px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px; }
+.rec-card b { font-weight: 600; font-size: 13.5px; }
+.rec-card span { grid-column: 1; font-size: 12px; color: var(--muted); }
+.rec-card .switch { grid-row: 1 / span 2; grid-column: 2; }
+
+main { min-height: 0; display: grid; grid-template-rows: auto 1fr; }
+
+/* ---------- the tape deck (signature element) ---------- */
+.deck { padding: 18px 24px 16px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center; }
+.counter { min-width: 132px; }
+.counter .big { font: 600 44px/1 var(--display); font-variation-settings: "opsz" 96; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.counter .big.dim { color: var(--faint); }
+.counter .small { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.tape { position: relative; height: 76px; border-radius: 12px; background: #110e1a; box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.tape canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tape .veil { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 14px; padding: 0 16px; color: var(--muted); font-size: 13px; text-align: center; background: rgba(17,14,26,.82); }
+.tape .veil button { height: 32px; flex: none; }
+.deck.flash .tape { animation: flash .9s ease-out; }
+@keyframes flash { 0% { box-shadow: inset 0 0 0 1px var(--amber), 0 0 0 0 rgba(255,179,71,.45); } 100% { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 14px rgba(255,179,71,0); } }
+.save-btn { display: grid; justify-items: center; gap: 6px; }
+.summary { font-size: 12px; color: var(--faint); text-align: center; max-width: 180px; }
+
+/* ---------- buttons & controls ---------- */
+.btn { height: 36px; padding: 0 16px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--raised); display: inline-flex; align-items: center; gap: 8px; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: var(--raised-2); }
+.btn.primary { background: var(--amber); border-color: var(--amber); color: var(--amber-ink); font-weight: 650; }
+.btn.primary:hover { background: #ffc266; }
+.btn.primary:disabled { background: var(--raised); border-color: var(--line-strong); color: var(--faint); cursor: default; }
+.btn.big { height: 44px; padding: 0 20px; font-size: 15px; border-radius: 11px; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { background: var(--surface); color: var(--text); }
+.btn.danger { background: transparent; border-color: #5a2b3a; color: #ff9aa5; }
+.btn.danger:hover { background: #3a1c27; }
+.btn svg { width: 16px; height: 16px; }
+kbd { display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 6px; background: rgba(0,0,0,.18); border: 1px solid rgba(0,0,0,.18); font: 600 12px var(--body); }
+.btn:not(.primary) kbd, .muted kbd, p kbd, li kbd { background: var(--ink); border-color: var(--line-strong); color: var(--text); }
+
+.switch { position: relative; width: 42px; height: 24px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--raised-2); transition: background .15s; }
+.switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #d8d3e8; transition: transform .15s; }
+.switch input:checked + i { background: var(--amber); }
+.switch input:checked + i::after { transform: translateX(18px); background: var(--amber-ink); }
+.switch input:focus-visible + i { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+select { height: 36px; min-width: 220px; max-width: 320px; padding: 0 34px 0 12px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--raised) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%239b95b4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center; appearance: none; cursor: pointer; }
+select option { background: var(--surface); }
+
+.seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--ink); border: 1px solid var(--line-strong); }
+.seg button { height: 30px; padding: 0 14px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--raised-2); color: var(--text); }
+
+/* ---------- pages ---------- */
+.pages { min-height: 0; overflow: auto; }
+.page { padding: 22px 24px 40px; max-width: 900px; }
+.page-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; }
+h1 { margin: 0; font: 600 24px/1.2 var(--display); letter-spacing: -0.02em; font-variation-settings: "opsz" 48; }
+h2 { margin: 30px 0 4px; font: 600 15px/1.3 var(--display); letter-spacing: -0.005em; color: var(--text); }
+.page-head + h2, .banner + h2 { margin-top: 6px; }
+.page-head .muted { font-size: 13px; }
+.page-head .grow { flex: 1; }
+.group { border-top: 1px solid var(--line); }
+.row { display: flex; align-items: center; gap: 24px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.row .label { flex: 1; min-width: 0; }
+.row .label b { display: block; font-weight: 550; font-size: 14px; }
+.row .label span { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 520px; }
+.row .label span.warn { color: #ffb4a0; }
+.row.stack { align-items: flex-start; }
+.row .ctrl { display: flex; gap: 8px; align-items: center; }
+.path { font-size: 12.5px; color: var(--muted); word-break: break-all; margin-top: 4px; }
+.note { margin-top: 14px; font-size: 12.5px; color: var(--faint); max-width: 620px; }
+
+.slider-wrap { width: 340px; }
+input[type=range] { width: 100%; appearance: none; height: 24px; background: transparent; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, var(--amber) var(--p, 50%), var(--raised-2) var(--p, 50%)); }
+input[type=range]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; margin-top: -7px; border-radius: 50%; background: var(--text); border: 3px solid var(--amber); }
+.ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--faint); padding: 0 4px; }
+.length-value { font: 600 20px var(--display); letter-spacing: -0.01em; }
+
+.keybtn { min-width: 150px; justify-content: center; }
+.keybtn.listening { border-color: var(--amber); color: var(--amber); }
+
+.banner { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 11px; background: #2d2438; border: 1px solid #4a3a52; margin-bottom: 18px; }
+.banner p { margin: 0; flex: 1; font-size: 13px; }
+.banner.error { background: #33202a; border-color: #5a2b3a; }
+
+/* ---------- clips ---------- */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 16px; }
+.chip { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--muted); font-size: 13px; }
+.chip[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: var(--ink); font-weight: 600; }
+.day { margin: 22px 0 10px; font: 600 14px var(--display); color: var(--muted); }
+.day:first-child { margin-top: 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 16px 14px; }
+.clip { border: 0; padding: 0; background: transparent; text-align: left; border-radius: 10px; }
+.clip .thumb { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: linear-gradient(135deg, #2a2340, #1a1626); }
+.clip .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s ease; }
+.clip:hover .thumb img { transform: scale(1.04); }
+.clip .thumb .len { position: absolute; right: 7px; bottom: 7px; padding: 1px 6px; border-radius: 5px; background: rgba(10,8,16,.78); font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.clip .thumb .play { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transition: opacity .15s; background: rgba(10,8,16,.25); }
+.clip .thumb .play span { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,179,71,.95); display: grid; place-items: center; color: var(--amber-ink); }
+.clip:hover .thumb .play, .clip:focus-visible .thumb .play { opacity: 1; }
+.clip .meta { padding: 8px 2px 0; }
+.clip .meta b { display: block; font-weight: 550; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clip .meta span { font-size: 12px; color: var(--muted); }
+.clip.new .thumb { box-shadow: 0 0 0 2px var(--amber); }
+.empty { padding: 56px 24px; text-align: center; color: var(--muted); max-width: 440px; margin: 0 auto; }
+.empty h3 { margin: 0 0 8px; font: 600 18px var(--display); color: var(--text); }
+
+/* ---------- modal & player ---------- */
+.scrim { position: fixed; inset: 0; background: rgba(8,6,14,.72); display: grid; place-items: center; z-index: 20; animation: fade .15s ease-out; }
+@keyframes fade { from { opacity: 0; } }
+.dialog { width: min(440px, calc(100% - 32px)); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px; padding: 22px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+.dialog h3 { margin: 0 0 8px; font: 600 18px var(--display); }
+.dialog p { margin: 0 0 8px; color: var(--muted); font-size: 13.5px; }
+.dialog ul { margin: 6px 0 12px; padding-left: 18px; color: var(--muted); font-size: 13px; }
+.dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.player { width: min(960px, calc(100% - 48px)); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.55); }
+.player video { display: block; width: 100%; max-height: calc(100vh - 210px); background: #000; aspect-ratio: 16 / 9; }
+.cant-play { width: 100%; aspect-ratio: 16 / 9; max-height: calc(100vh - 210px); display: grid; place-content: center; justify-items: center; gap: 4px; padding: 24px; text-align: center; background: #0e0b16; }
+.cant-play h3 { margin: 0; font: 600 18px var(--display); }
+.cant-play p { margin: 4px 0 16px; max-width: 460px; color: var(--muted); font-size: 13.5px; }
+.player .bar { display: flex; align-items: center; gap: 10px; padding: 14px 16px; }
+.player .bar .title { flex: 1; min-width: 0; }
+.player .bar b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player .bar span { font-size: 12.5px; color: var(--muted); }
+
+.snack { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(16px); opacity: 0; padding: 10px 16px; border-radius: 10px; background: var(--text); color: var(--ink); font-weight: 550; font-size: 13px; transition: opacity .2s, transform .2s; z-index: 30; pointer-events: none; }
+.snack.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- setup ---------- */
+#setup { height: 100%; display: grid; grid-template-rows: 44px 1fr; }
+#setup .titlebar { border-bottom: 0; }
+.setup-body { overflow: auto; padding: 8px 40px 32px; }
+.hero { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; margin-bottom: 18px; }
+.hero img { width: 72px; height: 72px; }
+.hero h1 { font-size: 34px; font-variation-settings: "opsz" 96; letter-spacing: -0.035em; }
+.hero p { margin: 4px 0 0; color: var(--muted); font-size: 14.5px; max-width: 400px; }
+.demo-tape { height: 60px; margin: 6px 0 22px; }
+.setup-list { margin: 0 0 18px; padding: 0; list-style: none; }
+.setup-list li { position: relative; padding: 9px 0 9px 26px; border-bottom: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+.setup-list li b { color: var(--text); font-weight: 550; }
+.setup-list li::before { content: ""; position: absolute; left: 4px; top: 16px; width: 8px; height: 8px; border-radius: 2px; background: var(--amber); transform: rotate(45deg); }
+details { margin: 4px 0 18px; border-radius: 11px; background: var(--surface); }
+details summary { list-style: none; cursor: pointer; padding: 12px 14px; font-weight: 550; display: flex; align-items: center; gap: 8px; }
+details summary::-webkit-details-marker { display: none; }
+details summary::after { content: ""; margin-left: auto; width: 8px; height: 8px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); transition: transform .15s; }
+details[open] summary::after { transform: rotate(-135deg); }
+details ul { margin: 0; padding: 0 14px 12px 32px; color: var(--muted); font-size: 13px; }
+details li { margin: 6px 0; }
+.opt { display: flex; align-items: center; gap: 14px; padding: 10px 0; }
+.opt .label { flex: 1; }
+.opt .label b { display: block; font-weight: 550; }
+.opt .label span { font-size: 12.5px; color: var(--muted); }
+.setup-actions { display: flex; gap: 10px; margin-top: 22px; }
+.steps { list-style: none; margin: 8px 0 0; padding: 0; counter-reset: step; }
+.steps li { display: grid; grid-template-columns: 32px 1fr; gap: 2px 14px; padding: 12px 0; border-bottom: 1px solid var(--line); counter-increment: step; }
+.steps .mark { grid-row: span 2; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--faint); font: 600 13px var(--display); }
+.steps .mark::before { content: counter(step); }
+.steps li[data-state="active"] .mark { background: transparent; box-shadow: inset 0 0 0 2px var(--amber); color: var(--amber); }
+.steps li[data-state="active"] .mark::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--amber); border-top-color: transparent; animation: spin .8s linear infinite; }
+.steps li[data-state="done"] .mark { background: var(--amber); color: var(--amber-ink); }
+.steps li[data-state="done"] .mark::before { content: "✓"; }
+.steps li[data-state="failed"] .mark { background: var(--rec); color: #fff; }
+.steps li[data-state="failed"] .mark::before { content: "!"; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.steps b { font-weight: 550; }
+.steps li[data-state="pending"] b { color: var(--muted); }
+.steps .detail { font-size: 12.5px; color: var(--muted); }
+.steps li[data-state="failed"] .detail { color: #ff9aa5; }
+.progress { height: 4px; border-radius: 4px; background: var(--raised-2); margin-top: 6px; overflow: hidden; grid-column: 2; }
+.progress i { display: block; height: 100%; background: var(--amber); width: 0; transition: width .2s; }
+.done-card { margin-top: 24px; padding: 20px; border-radius: 14px; background: var(--surface); }
+.done-card h2 { margin: 0 0 8px; font-size: 22px; }
+.done-card p { margin: 0 0 14px; color: var(--muted); }
+
+body.mine .own-only, body:not(.mine) .mine-only { display: none !important; }
+#setup.mine .own-setup, #setup:not(.mine) .mine-setup { display: none; }
+.banner.info { background: var(--surface); border-color: var(--line-strong); }
+.banner.info p b { font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+@media (max-width: 860px) { .shell { grid-template-columns: 64px 1fr; } .nav span, .nav .count, .rec-card span, .rec-card b { display: none; } .rec-card { grid-template-columns: 1fr; padding: 8px; justify-items: center; } .deck { grid-template-columns: 1fr; } .counter { display: flex; align-items: baseline; gap: 12px; } }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-clips" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m10 9.5 4.5 2.5-4.5 2.5z"/></g></symbol>
+  <symbol id="i-capture" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></g></symbol>
+  <symbol id="i-audio" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></g></symbol>
+  <symbol id="i-keys" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 10h1M10.5 10h1M14.5 10h1M8 14h8"/></g></symbol>
+  <symbol id="i-general" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></g></symbol>
+  <symbol id="i-min" viewBox="0 0 16 16"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.5v9l7.5-4.5z" fill="currentColor"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.4l2 2h8.6A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></g></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7M9 7V4.5A.5.5 0 0 1 9.5 4h5a.5.5 0 0 1 .5.5V7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<!-- ================= main app ================= -->
+<div id="app" hidden>
+  <header class="titlebar">
+    <div class="brand"><img src="icon.png" alt="">Hindsight</div>
+    <span class="pill" id="pill" data-state="starting"><span class="dot"></span><span id="pillText">Starting</span></span>
+    <div class="drag" data-drag></div>
+    <button class="winbtn" data-act="minimize" aria-label="Minimize"><svg width="16" height="16"><use href="#i-min"/></svg></button>
+    <button class="winbtn close" data-act="hide" aria-label="Close"><svg width="16" height="16"><use href="#i-x"/></svg></button>
+  </header>
+  <div class="shell">
+    <nav class="side" aria-label="Sections">
+      <button class="nav" data-page="clips" aria-current="page"><svg><use href="#i-clips"/></svg><span>Clips</span><em class="count" id="clipCount"></em></button>
+      <button class="nav" data-page="capture"><svg><use href="#i-capture"/></svg><span>Capture</span></button>
+      <button class="nav" data-page="audio"><svg><use href="#i-audio"/></svg><span>Audio</span></button>
+      <button class="nav" data-page="keys"><svg><use href="#i-keys"/></svg><span>Shortcuts</span></button>
+      <button class="nav" data-page="general"><svg><use href="#i-general"/></svg><span>General</span></button>
+      <div class="spacer"></div>
+      <label class="rec-card">
+        <b>Recording</b>
+        <span id="recSub">Keeping 2 min</span>
+        <span class="switch"><input type="checkbox" id="recToggle" aria-label="Recording"><i></i></span>
+      </label>
+    </nav>
+
+    <main>
+      <section class="deck" id="deck" aria-label="Replay buffer">
+        <div class="counter">
+          <div class="big" id="counter">0:00</div>
+          <div class="small" id="counterSub">in the buffer</div>
+        </div>
+        <div class="tape" id="tape">
+          <canvas id="tapeCanvas"></canvas>
+          <div class="veil" id="tapeVeil" hidden><span id="veilText">Recording is off</span><button class="btn" id="veilBtn">Turn on</button><button class="btn" id="veilBtn2" hidden></button></div>
+        </div>
+        <div class="save-btn">
+          <button class="btn primary big" id="saveBtn">Save clip <kbd id="saveKbd">Alt+F10</kbd></button>
+          <div class="summary" id="summary"></div>
+        </div>
+      </section>
+
+      <div class="pages">
+        <!-- clips -->
+        <section class="page" data-page="clips">
+          <div class="page-head">
+            <h1>Clips</h1>
+            <span class="muted" id="clipTotals"></span>
+            <span class="grow"></span>
+            <button class="btn" data-act="openFolder"><svg><use href="#i-folder"/></svg>Open folder</button>
+          </div>
+          <div class="filters" id="filters"></div>
+          <div id="clipList"></div>
+        </section>
+
+        <!-- capture -->
+        <section class="page" data-page="capture" hidden>
+          <div class="page-head"><h1>Capture</h1></div>
+
+          <div class="banner info mine-only"><p><b>Clipping from your OBS.</b> Clips record OBS's main output, the scene that's live, with the encoder, resolution and audio from your OBS profile. Change those in OBS under Settings &gt; Output.</p></div>
+          <div class="own-only">
+          <h2>What to record</h2>
+          <div class="group">
+            <div class="row">
+              <div class="label"><b>Capture</b><span id="modeHint"></span></div>
+              <div class="ctrl"><div class="seg" id="modeSeg"><button data-v="game">Game</button><button data-v="screen">Whole screen</button></div></div>
+            </div>
+            <div class="row" id="monitorRow">
+              <div class="label"><b>Display</b><span>Which screen to record.</span></div>
+              <div class="ctrl"><select id="monitorSel"></select></div>
+            </div>
+          </div>
+          </div>
+
+          <h2>Clip length</h2>
+          <div class="group">
+            <div class="row stack">
+              <div class="label"><b class="length-value" id="lengthValue">2 min</b><span id="lengthHint"></span></div>
+              <div class="ctrl"><div class="slider-wrap"><input type="range" id="lengthRange" min="0" max="8" step="1"><div class="ticks"><span>15s</span><span>1m</span><span>3m</span><span>10m</span><span>20m</span></div></div></div>
+            </div>
+          </div>
+
+          <div class="own-only">
+          <h2>Video</h2>
+          <div class="group">
+            <div class="row">
+              <div class="label"><b>Resolution</b><span>Clips are scaled to this size.</span></div>
+              <div class="ctrl"><select id="heightSel"></select></div>
+            </div>
+            <div class="row">
+              <div class="label"><b>Frame rate</b><span>Higher looks smoother and makes bigger files.</span></div>
+              <div class="ctrl"><select id="fpsSel"></select></div>
+            </div>
+            <div class="row">
+              <div class="label"><b>Quality</b><span id="qualityHint"></span></div>
+              <div class="ctrl"><div class="seg" id="qualitySeg"><button data-v="low">Low</button><button data-v="medium">Medium</button><button data-v="high">High</button><button data-v="max">Max</button></div></div>
+            </div>
+            <div class="row">
+              <div class="label"><b>Encoder</b><span id="encoderHint"></span></div>
+              <div class="ctrl"><select id="encoderSel"></select></div>
+            </div>
+          </div>
+          </div>
+          <p class="note own-only">Changing clip length or video settings restarts OBS, which empties the buffer.</p>
+          <p class="note mine-only">Changing clip length restarts OBS's replay buffer, which empties it. OBS itself and your projectors stay open.</p>
+        </section>
+
+        <!-- audio -->
+        <section class="page" data-page="audio" hidden>
+          <div class="page-head"><h1>Audio</h1></div>
+          <div class="banner info mine-only"><p><b>Audio comes from your OBS scenes.</b> Whatever is in your OBS mix ends up in clips. Mute or add sources in OBS.</p></div>
+          <div class="group own-only">
+            <div class="row">
+              <div class="label"><b>Game and desktop audio</b><span>Everything you hear through your default speakers or headset.</span></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="DesktopAudio" aria-label="Game and desktop audio"><i></i></span></div>
+            </div>
+            <div class="row">
+              <div class="label"><b>Microphone</b><span>On by default. Turn it off if you don't want your voice in clips.</span></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="Mic" aria-label="Microphone"><i></i></span></div>
+            </div>
+            <div class="row" data-needs="Mic">
+              <div class="label"><b>Microphone device</b></div>
+              <div class="ctrl"><select id="micSel"></select></div>
+            </div>
+            <div class="row" data-needs="Mic">
+              <div class="label"><b>Noise suppression</b><span>Cuts keyboard clatter, fans and background hum from your mic.</span></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="NoiseSuppression" aria-label="Noise suppression"><i></i></span></div>
+            </div>
+            <div class="row">
+              <div class="label"><b>Separate audio tracks</b><span>Adds game and mic as their own tracks next to the mix, so you can balance them when editing.</span></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="SeparateTracks" aria-label="Separate audio tracks"><i></i></span></div>
+            </div>
+          </div>
+          <p class="note own-only">Mic and audio switches apply instantly. Separate tracks restarts OBS.</p>
+        </section>
+
+        <!-- shortcuts -->
+        <section class="page" data-page="keys" hidden>
+          <div class="page-head"><h1>Shortcuts</h1></div>
+          <div id="keyError" class="banner error" hidden><p id="keyErrorText"></p></div>
+          <div class="group">
+            <div class="row">
+              <div class="label"><b>Save a clip</b><span>Works while you're in a game.</span></div>
+              <div class="ctrl"><button class="btn keybtn" data-key="SaveHotkey"></button></div>
+            </div>
+            <div class="row">
+              <div class="label"><b>Open Hindsight</b><span>Press it again to close.</span></div>
+              <div class="ctrl"><button class="btn keybtn" data-key="OverlayHotkey"></button></div>
+            </div>
+          </div>
+          <h2>When a clip is saved</h2>
+          <div class="group">
+            <div class="row">
+              <div class="label"><b>Play a sound</b></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="SavedSound" aria-label="Play a sound"><i></i></span></div>
+            </div>
+            <div class="row">
+              <div class="label"><b>Show a notification</b><span>A small card in the corner. Games in exclusive fullscreen hide it, but the sound still plays.</span></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="SavedToast" aria-label="Show a notification"><i></i></span></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- general -->
+        <section class="page" data-page="general" hidden>
+          <div class="page-head"><h1>General</h1></div>
+          <div id="restartBanner" class="banner" hidden><p id="restartText"></p><button class="btn primary" data-act="relaunch">Restart Hindsight</button></div>
+          <div class="group">
+            <div class="row stack">
+              <div class="label"><b>Clips folder</b><div class="path" id="folderPath"></div></div>
+              <div class="ctrl"><button class="btn" data-act="pickFolder">Change</button><button class="btn" data-act="openFolder">Open</button></div>
+            </div>
+            <div class="row">
+              <div class="label"><b>Sort clips into a folder per game</b><span>Named after the game that had focus when you saved.</span></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="SortByGame" aria-label="Sort clips per game"><i></i></span></div>
+            </div>
+          </div>
+          <h2>Startup</h2>
+          <div class="group">
+            <div class="row">
+              <div class="label"><b>Start with Windows</b><span>Hindsight and OBS start quietly in the tray when you sign in.</span></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="LaunchAtLogin" aria-label="Start with Windows"><i></i></span></div>
+            </div>
+            <div class="row">
+              <div class="label"><b>Run OBS as administrator</b><span>Needed to capture some games, and gives OBS priority on the GPU. Windows asks for permission once.</span></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="ObsAsAdmin" aria-label="Run OBS as administrator"><i></i></span></div>
+            </div>
+          </div>
+          <h2>OBS</h2>
+          <div class="group">
+            <div class="row">
+              <div class="label"><b>OBS setup</b><span id="obsModeHint"></span></div>
+              <div class="ctrl"><div class="seg" id="obsModeSeg"><button data-v="hindsight">Hindsight's own</button><button data-v="mine">My OBS</button></div></div>
+            </div>
+            <div class="row mine-only">
+              <div class="label"><b>Open OBS when Hindsight starts</b><span>Opens your OBS with your last profile and scenes. Projectors come back too.</span></div>
+              <div class="ctrl"><span class="switch"><input type="checkbox" data-set="OpenObsForMe" aria-label="Open OBS when Hindsight starts"><i></i></span></div>
+            </div>
+            <div class="row">
+              <div class="label"><b id="obsLine">OBS runs in the background</b><span id="obsLineSub"></span></div>
+              <div class="ctrl"><button class="btn" data-act="showObs">Show OBS</button></div>
+            </div>
+            <div class="row own-only">
+              <div class="label"><b>Use OBS yourself</b><span>Closes the background OBS so you can stream or record with your own setup. Resume when you're done.</span></div>
+              <div class="ctrl"><button class="btn" data-act="pauseObs" id="pauseBtn">Close OBS</button></div>
+            </div>
+          </div>
+          <h2>Remove</h2>
+          <div class="group">
+            <div class="row">
+              <div class="label"><b>Remove Hindsight</b><span>Puts back everything Hindsight changed in OBS and Windows. Your clips and OBS itself stay.</span></div>
+              <div class="ctrl"><button class="btn danger" id="removeBtn">Remove</button></div>
+            </div>
+          </div>
+          <p class="note">Hindsight <span id="ver"></span>. <a href="#" data-act="openLog">Open log</a>. <a href="#" id="repoLink">Source on GitHub</a>.</p>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= setup ================= -->
+<div id="setup" hidden>
+  <header class="titlebar">
+    <div class="drag" data-drag></div>
+    <button class="winbtn close" data-act="quit" aria-label="Close"><svg width="16" height="16"><use href="#i-x"/></svg></button>
+  </header>
+  <div class="setup-body">
+    <div class="hero">
+      <img src="icon.png" alt="">
+      <div>
+        <h1>Hindsight</h1>
+        <p>Keeps the last few minutes of your game in memory. Press <kbd>Alt+F10</kbd> and they're saved as a clip.</p>
+      </div>
+    </div>
+    <div class="tape demo-tape"><canvas id="demoCanvas"></canvas></div>
+
+    <div id="setupIntro">
+      <ul class="setup-list">
+        <li class="own-setup"><b>Installs OBS</b> if it isn't on your PC, and gives it a profile of its own. Your other OBS profiles stay as they are.</li>
+        <li class="own-setup"><b>Starts OBS quietly in the tray</b> when you sign in, recording into memory, not disk.</li>
+        <li class="mine-setup"><b>Uses your OBS as it is.</b> Your profile, scenes and projectors stay. Hindsight turns on OBS's replay buffer and sets its length.</li>
+        <li class="mine-setup"><b>Opens OBS when you sign in</b> and keeps the last few minutes of your live scene in memory, not on disk.</li>
+        <li><b>Turns off Xbox Game Bar capture</b> and OBS's exit warning so they don't get in the way.</li>
+        <li><b>Remove puts it all back.</b> Your clips and OBS itself stay.</li>
+      </ul>
+      <div class="opt">
+        <div class="label"><b>Start with Windows</b><span>Recommended, so you never miss a moment.</span></div>
+        <span class="switch"><input type="checkbox" id="optStartup" checked aria-label="Start with Windows"><i></i></span>
+      </div>
+      <div class="opt">
+        <div class="label"><b>Run OBS as administrator</b><span>Captures more games. Windows asks for permission once.</span></div>
+        <span class="switch"><input type="checkbox" id="optAdmin" checked aria-label="Run OBS as administrator"><i></i></span>
+      </div>
+      <div class="opt">
+        <div class="label"><b>Use my own OBS setup</b><span>Pick this if you stream, use projectors or keep OBS open. Clips come from your live scene, and OBS may restart once.</span></div>
+        <span class="switch"><input type="checkbox" id="optMine" aria-label="Use my own OBS setup"><i></i></span>
+      </div>
+      <details>
+        <summary>Good to know before you start</summary>
+        <ul>
+          <li>Game capture hooks into games, and a few anti-cheats object to that. For Valorant, FACEIT and similar, switch to Whole screen in Capture.</li>
+          <li>Whole screen records everything on that display, notifications included.</li>
+          <li>Your microphone is recorded unless you turn it off in Audio.</li>
+          <li>Protected video, like streaming services, shows up black. Hindsight doesn't get around DRM.</li>
+          <li>If OBS crashes, Hindsight restarts it and skips OBS's safe-mode question.</li>
+          <li>An outdated OBS plugin can show a load error when OBS starts. Clicking OK is fine.</li>
+        </ul>
+      </details>
+      <div class="setup-actions">
+        <button class="btn primary big" id="setupBtn">Set up Hindsight</button>
+        <button class="btn ghost big" data-act="quit">Not now</button>
+      </div>
+    </div>
+
+    <div id="setupRun" hidden>
+      <ol class="steps" id="steps">
+        <li data-id="obs" data-state="pending"><span class="mark"></span><b>Find or install OBS</b><span class="detail"></span></li>
+        <li data-id="close" data-state="pending"><span class="mark"></span><b>Get OBS ready</b><span class="detail"></span></li>
+        <li data-id="configure" data-state="pending"><span class="mark"></span><b id="configureTitle">Create the Hindsight profile</b><span class="detail"></span></li>
+        <li data-id="windows" data-state="pending"><span class="mark"></span><b>Adjust Windows settings</b><span class="detail"></span></li>
+        <li data-id="start" data-state="pending"><span class="mark"></span><b>Start recording</b><span class="detail"></span></li>
+      </ol>
+      <div class="setup-actions" id="setupFail" hidden>
+        <button class="btn primary" id="retryBtn">Try again</button>
+        <button class="btn ghost" data-act="openLog">Open log</button>
+      </div>
+      <div class="done-card" id="setupDone" hidden>
+        <h2>You're set</h2>
+        <p>Press <kbd class="hk-save">Alt+F10</kbd> any time to save the last <span class="len-text">2 min</span>. <kbd class="hk-open">Alt+X</kbd> opens Hindsight. It lives in the tray, next to the clock.</p>
+        <button class="btn primary" data-act="doneWelcome">Open Hindsight</button>
+        <button class="btn ghost" data-act="hide">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="snack" id="snack" role="status"></div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const host = window.chrome && window.chrome.webview;
+const send = (type, extra = {}) => { const m = Object.assign({ type }, extra); if (host) host.postMessage(JSON.stringify(m)); else setTimeout(() => window.Demo && window.Demo.handle(m), 0); };
+
+const LENGTHS = [15, 30, 60, 120, 180, 300, 600, 900, 1200];
+const state = { mode: "app", settings: {}, options: { encoders: [], fps: [], heights: [], mics: [], monitors: [] }, status: {}, clips: [], filter: "all", tape: { values: [], perSecond: 4, bufferedSeconds: 0, saves: [] }, lastBucketAt: performance.now(), visible: true, newPath: null };
+
+/* ---------- formatting ---------- */
+function fmtLen(sec) { if (sec < 60) return sec + " sec"; const m = Math.floor(sec / 60), s = sec % 60; return s ? `${m} min ${s} sec` : `${m} min`; }
+function fmtClock(sec) { sec = Math.max(0, Math.floor(sec)); const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, "0")}`; }
+function fmtBytes(b) { if (b >= 1 << 30) return (b / (1 << 30)).toFixed(1) + " GB"; if (b >= 1 << 20) return Math.round(b / (1 << 20)) + " MB"; return Math.max(1, Math.round(b / 1024)) + " KB"; }
+function fmtTime(ms) { return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
+function dayLabel(ms) {
+  const d = new Date(ms), t = new Date(); const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(t) - day(d)) / 864e5);
+  if (diff === 0) return "Today"; if (diff === 1) return "Yesterday";
+  return d.toLocaleDateString([], diff < 7 ? { weekday: "long" } : { month: "long", day: "numeric", year: d.getFullYear() === t.getFullYear() ? undefined : "numeric" });
+}
+const KEY_LABELS = { Oemtilde: "`", OemMinus: "-", Oemplus: "=", OemOpenBrackets: "[", OemCloseBrackets: "]", OemPipe: "\\", OemSemicolon: ";", OemQuotes: "'", Oemcomma: ",", OemPeriod: ".", OemQuestion: "/", Scroll: "Scroll Lock", PageUp: "Page Up", PageDown: "Page Down", PrintScreen: "Print Screen", Multiply: "Num *", Add: "Num +", Subtract: "Num -", Divide: "Num /", Decimal: "Num ." };
+function prettyKey(combo) { return (combo || "").split("+").map(p => KEY_LABELS[p] || p.replace(/^NumPad/, "Num ")).join(" + "); }
+
+/* ---------- bitrate & memory (mirrors the app's math) ---------- */
+function bitrate(q, w, h, fps, codec) {
+  const basis = { low: 10000, medium: 18000, high: 30000, max: 50000 }[q] || 30000;
+  let s = basis * Math.pow((w * h * Math.max(24, fps)) / (1920 * 1080 * 60), 0.75);
+  if (codec === "HEVC") s *= 0.72; else if (codec === "AV1") s *= 0.65;
+  return Math.max(2500, Math.min(150000, Math.round(s / 500) * 500));
+}
+function bufferMB(kbps, secs) { return Math.ceil((kbps + 600) * 1000 / 8 * secs / (1024 * 1024) * 1.3) + 64; }
+function outputSize() {
+  const o = state.options, s = state.settings; const c = o.canvas || { w: 1920, h: 1080 };
+  if (!s.OutputHeight || s.OutputHeight >= c.h) return { w: c.w, h: c.h };
+  return { w: Math.round(c.w * s.OutputHeight / c.h / 2) * 2, h: s.OutputHeight };
+}
+function currentEncoder() { const e = state.options.encoders || []; return e.find(x => x.key === state.settings.Encoder) || e[0] || { codec: "H.264", label: "", note: "" }; }
+
+/* ---------- messages from the app ---------- */
+const handlers = {
+  init(d) {
+    state.mode = d.mode; state.settings = d.settings; state.options = d.options; state.status = d.status; state.version = d.version; state.repo = d.repo;
+    setTape(d.tape, true);
+    $("#ver").textContent = d.version;
+    showMode(d.mode);
+    renderAll();
+  },
+  mode(d) { showMode(d.mode); },
+  status(d) { state.status = d; renderStatus(); },
+  settings(d) { state.settings = d; renderSettings(); renderStatus(); },
+  options(d) { state.options = d; renderSettings(); },
+  tape(d) { pushTape(d); },
+  clips(d) { state.clips = d.items; state.clipFolder = d.folder; state.clipTotal = d.total; renderClips(); },
+  clipsUpdated(d) {
+    for (const u of d.items) { const i = state.clips.findIndex(c => c.path === u.path); if (i >= 0) state.clips[i] = u; }
+    for (const u of d.items) { const el = document.querySelector(`.clip[data-path="${CSS.escape(u.path)}"]`); if (el) el.replaceWith(clipCard(u)); }
+  },
+  saved(d) {
+    state.newPath = d.path;
+    const deck = $("#deck"); deck.classList.remove("flash"); void deck.offsetWidth; deck.classList.add("flash");
+    snack(`Saved to ${d.game}`);
+  },
+  copied() { snack("Copied. Paste it into Discord or any folder."); },
+  error(d) { if (d.key === "SaveHotkey" || d.key === "OverlayHotkey") { $("#keyErrorText").textContent = d.message; $("#keyError").hidden = false; } else snack(d.message); },
+  restartNeeded(d) {
+    $("#restartText").textContent = d.admin ? "Restart Hindsight to run OBS as administrator." : "Restart Hindsight to run OBS without administrator rights.";
+    $("#restartBanner").hidden = false;
+  },
+  setupStep(d) { setupStep(d); },
+  setupDone() { $("#setupDone").hidden = false; $("#setupFail").hidden = true; },
+  removing() { modal(`<h3>Removing Hindsight…</h3><p>Closing OBS and putting your settings back.</p>`, []); },
+  removed() { modal(`<h3>Hindsight is removed</h3><p>OBS and your clips are still here. This window closes in a moment.</p>`, []); },
+  shown() { state.visible = true; if (state.mode === "app") send("refreshClips"); },
+  hidden() { state.visible = false; const v = $("video"); if (v) v.pause(); closeModal(); },
+};
+if (host) host.addEventListener("message", e => { const m = e.data; const h = handlers[m.type]; if (h) h(m.data || {}); });
+
+/* ---------- mode & navigation ---------- */
+function showMode(mode) {
+  state.mode = mode;
+  $("#app").hidden = mode === "setup";
+  $("#setup").hidden = mode !== "setup";
+  if (mode === "welcome") { welcomeDialog(); state.mode = "app"; }
+}
+function showPage(p) {
+  $$(".nav").forEach(n => n.setAttribute("aria-current", n.dataset.page === p ? "page" : "false"));
+  $$(".page").forEach(s => s.hidden = s.dataset.page !== p);
+  $(".pages").scrollTop = 0;
+}
+$$(".nav").forEach(n => n.addEventListener("click", () => showPage(n.dataset.page)));
+
+/* ---------- render ---------- */
+function renderAll() { renderStatus(); renderSettings(); renderClips(); }
+
+function renderStatus() {
+  const st = state.status, s = state.settings;
+  const pill = $("#pill"); pill.dataset.state = st.state || "starting";
+  $("#pillText").textContent = { buffering: "Recording", off: "Off", starting: "Starting", restarting: "Restarting", obsbusy: "Paused", obsclosed: "Paused", needsrestart: "Waiting", error: "Needs attention", setup: "Not set up" }[st.state] || "Starting";
+  const mine = s.ObsMode === "mine";
+  const on = st.state === "buffering";
+  $("#saveBtn").disabled = !on;
+  $("#saveKbd").textContent = prettyKey(s.SaveHotkey);
+  $("#recToggle").checked = !!s.Recording;
+  $("#recToggle").disabled = !(st.state === "buffering" || st.state === "off");
+  $("#recSub").textContent = s.Recording ? `Keeping ${fmtLen(s.ClipSeconds || 120)}` : "Off";
+  $("#summary").textContent = on ? (st.summary || "") : "";
+  const veil = $("#tapeVeil");
+  if (on) veil.hidden = true;
+  else {
+    veil.hidden = false;
+    const btn = $("#veilBtn"), btn2 = $("#veilBtn2");
+    const map = {
+      off: ["Recording is off.", "Turn on", () => send("recording", { on: true })],
+      obsclosed: [st.detail || "OBS is closed.", mine ? "Open OBS" : "Resume", () => send("pauseObs")],
+      obsbusy: [st.detail || "OBS is open with another profile.", "Use my OBS instead", () => askObsMode("mine"), "Close my OBS", () => send("takeOver")],
+      needsrestart: [st.detail || "OBS needs a restart.", "Restart OBS", () => send("restartObs")],
+      error: [st.detail || "Something went wrong.", "Try again", () => send("pauseObs")],
+      starting: [st.detail || "Starting OBS…", null], restarting: [st.detail || "Restarting OBS…", null],
+    }[st.state] || ["Starting…", null];
+    $("#veilText").textContent = map[0];
+    btn.hidden = !map[1]; if (map[1]) { btn.textContent = map[1]; btn.onclick = map[2]; }
+    btn2.hidden = !map[3]; if (map[3]) { btn2.textContent = map[3]; btn2.onclick = map[4]; }
+  }
+  $("#pauseBtn").textContent = (st.state === "obsclosed" || st.state === "obsbusy") ? "Resume" : "Close OBS";
+  if (state.options) renderSettingsObsLine();
+  updateCounter();
+}
+
+function renderSettings() {
+  const s = state.settings, o = state.options; if (!s || !o) return;
+  const mine = s.ObsMode === "mine";
+  document.body.classList.toggle("mine", mine);
+  $$("#obsModeSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === (mine ? "mine" : "hindsight"))));
+  $("#obsModeHint").textContent = mine
+    ? "Hindsight clips from your OBS. Your profile, scenes and projectors stay as they are."
+    : "Hindsight runs a hidden OBS with its own profile. Switch to My OBS if you stream, use projectors or keep OBS open.";
+  $$("[data-set]").forEach(el => { el.checked = !!s[el.dataset.set]; });
+  $$("[data-needs]").forEach(el => el.style.opacity = s[el.dataset.needs] ? 1 : 0.45);
+  // capture mode
+  $$("#modeSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === s.CaptureMode)));
+  $("#modeHint").textContent = s.CaptureMode === "screen"
+    ? "Records a whole display. Safe with every anti-cheat. Notifications show up too."
+    : "Records whatever game is fullscreen. A few anti-cheats object; use Whole screen for those.";
+  $("#monitorRow").hidden = s.CaptureMode !== "screen";
+  fillSelect($("#monitorSel"), (o.monitors || []).map(m => [m.id, m.name]), s.MonitorId);
+  // length
+  let li = LENGTHS.indexOf(s.ClipSeconds); if (li < 0) li = LENGTHS.findIndex(x => x >= s.ClipSeconds); if (li < 0) li = 3;
+  const r = $("#lengthRange"); r.value = li; paintRange(r);
+  updateLength(s.ClipSeconds);
+  // video
+  fillSelect($("#heightSel"), (o.heights || []).map(h => [String(h.value), `${h.label}  (${h.detail})`]), String(s.OutputHeight || 0));
+  fillSelect($("#fpsSel"), (o.fps || []).map(f => [String(f), f + " fps"]), String(s.Fps));
+  $$("#qualitySeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === s.Quality)));
+  fillSelect($("#encoderSel"), (o.encoders || []).map(e => [e.key, `${e.label}, ${e.codec}`]), currentEncoder().key);
+  $("#encoderHint").textContent = currentEncoder().note || "";
+  const out = outputSize(); const kb = bitrate(s.Quality, out.w, out.h, s.Fps, currentEncoder().codec);
+  $("#qualityHint").textContent = `${(kb / 1000).toFixed(kb < 10000 ? 1 : 0)} Mbps, about ${fmtBytes(kb * 1000 / 8 * 60)} per minute of clip.`;
+  // audio
+  fillSelect($("#micSel"), (o.mics || []).map(m => [m.id, m.name]), s.MicDevice);
+  // keys
+  $$(".keybtn").forEach(b => { if (!b.classList.contains("listening")) b.textContent = prettyKey(s[b.dataset.key]); });
+  $("#keyError").hidden = !s.hotkeyError; $("#keyErrorText").textContent = s.hotkeyError || "";
+  $$(".hk-save").forEach(k => k.textContent = prettyKey(s.SaveHotkey));
+  $$(".hk-open").forEach(k => k.textContent = prettyKey(s.OverlayHotkey));
+  $$(".len-text").forEach(k => k.textContent = fmtLen(s.ClipSeconds || 120));
+  // general
+  $("#folderPath").textContent = s.EffectiveClipsFolder || "";
+  const st = state.status || {};
+  if (mine) {
+    $("#obsLine").textContent = st.profile ? `Clipping from your profile “${st.profile}”` : "Clipping from your OBS";
+    $("#obsLineSub").textContent = st.collection ? `Scene collection “${st.collection}”. Hindsight only turns on OBS's replay buffer and sets its length.` : "Hindsight only turns on OBS's replay buffer and sets its length.";
+  } else {
+    $("#obsLine").textContent = o.obsVersion ? `OBS ${o.obsVersion} runs in the background` : "OBS runs in the background";
+    $("#obsLineSub").textContent = "It uses its own Hindsight profile and scene collection. Your other profiles aren't touched.";
+  }
+  $("#saveKbd").textContent = prettyKey(s.SaveHotkey);
+}
+
+function renderSettingsObsLine() {
+  const s = state.settings, st = state.status || {}, o = state.options || {};
+  if (s.ObsMode === "mine") {
+    $("#obsLine").textContent = st.profile ? `Clipping from your profile “${st.profile}”` : "Clipping from your OBS";
+    $("#obsLineSub").textContent = (st.collection ? `Scene collection “${st.collection}”. ` : "") + "Hindsight only turns on OBS's replay buffer and sets its length.";
+  }
+}
+function fillSelect(sel, items, value) {
+  const key = JSON.stringify(items);
+  if (sel.dataset.key !== key) { sel.innerHTML = ""; for (const [v, t] of items) { const op = document.createElement("option"); op.value = v; op.textContent = t; sel.appendChild(op); } sel.dataset.key = key; }
+  if (value != null && items.some(i => i[0] === value)) sel.value = value;
+}
+function paintRange(r) { r.style.setProperty("--p", (r.value / r.max * 100) + "%"); }
+function updateLength(sec) {
+  const s = state.settings; const out = outputSize();
+  const kb = bitrate(s.Quality, out.w, out.h, s.Fps, currentEncoder().codec);
+  const mb = bufferMB(kb, sec); const ram = state.options.ramMB || 16384;
+  $("#lengthValue").textContent = fmtLen(sec);
+  const hint = $("#lengthHint");
+  if (s.ObsMode === "mine") { hint.textContent = "OBS keeps this much video in memory, at your OBS recording bitrate."; hint.className = ""; return; }
+  hint.textContent = `Uses about ${fmtBytes(mb * 1048576)} of memory while recording` + (mb > ram * 0.35 ? `. That's a big share of your ${Math.round(ram / 1024)} GB; consider a shorter clip or lower quality.` : ".");
+  hint.className = mb > ram * 0.35 ? "warn" : "";
+}
+
+/* ---------- settings input ---------- */
+function set(key, value, extra) { state.settings[key] = value; send("set", Object.assign({ key, value }, extra || {})); renderSettings(); renderStatus(); }
+$$("[data-set]").forEach(el => el.addEventListener("change", () => set(el.dataset.set, el.checked)));
+$("#recToggle").addEventListener("change", e => send("recording", { on: e.target.checked }));
+$$("#modeSeg button").forEach(b => b.addEventListener("click", () => set("CaptureMode", b.dataset.v)));
+$$("#obsModeSeg button").forEach(b => b.addEventListener("click", () => askObsMode(b.dataset.v)));
+function askObsMode(v) {
+  if ((state.settings.ObsMode || "hindsight") === v) return;
+  if (v === "mine") modal(`<h3>Clip from your own OBS?</h3>
+      <p>Hindsight closes its hidden OBS and uses yours instead: your profile, scenes and projectors stay as they are.</p>
+      <ul><li>Clips record OBS's main output, the scene that's live.</li><li>Quality and audio come from your OBS settings.</li><li>OBS may restart once to turn on its replay buffer.</li></ul>`,
+    [["Cancel", "ghost", closeModal], ["Use my OBS", "primary", () => { closeModal(); set("ObsMode", "mine"); }]]);
+  else modal(`<h3>Switch to Hindsight's own OBS?</h3>
+      <p>This closes your OBS, including any projectors, and runs a hidden OBS with Hindsight's profile instead. Your replay buffer settings are put back.</p>`,
+    [["Cancel", "ghost", closeModal], ["Switch", "primary", () => { closeModal(); set("ObsMode", "hindsight"); }]]);
+}
+$$("#qualitySeg button").forEach(b => b.addEventListener("click", () => set("Quality", b.dataset.v)));
+$("#monitorSel").addEventListener("change", e => { const name = e.target.selectedOptions[0].textContent; const m = name.match(/(\d{3,5})\s*x\s*(\d{3,5})/); set("MonitorId", e.target.value, { size: m ? `${m[1]}x${m[2]}` : "" }); });
+$("#heightSel").addEventListener("change", e => set("OutputHeight", parseInt(e.target.value, 10)));
+$("#fpsSel").addEventListener("change", e => set("Fps", parseInt(e.target.value, 10)));
+$("#encoderSel").addEventListener("change", e => set("Encoder", e.target.value));
+$("#micSel").addEventListener("change", e => set("MicDevice", e.target.value));
+const range = $("#lengthRange");
+range.addEventListener("input", () => { paintRange(range); updateLength(LENGTHS[range.value]); });
+range.addEventListener("change", () => set("ClipSeconds", LENGTHS[range.value]));
+
+/* ---------- shortcut capture ---------- */
+const CODE_KEYS = { Space: "Space", Insert: "Insert", Delete: "Delete", Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", Backquote: "Oemtilde", Minus: "OemMinus", Equal: "Oemplus", BracketLeft: "OemOpenBrackets", BracketRight: "OemCloseBrackets", Backslash: "OemPipe", Semicolon: "OemSemicolon", Quote: "OemQuotes", Comma: "Oemcomma", Period: "OemPeriod", Slash: "OemQuestion", Pause: "Pause", ScrollLock: "Scroll", NumpadMultiply: "Multiply", NumpadAdd: "Add", NumpadSubtract: "Subtract", NumpadDivide: "Divide", NumpadDecimal: "Decimal" };
+function keyFromEvent(e) {
+  const c = e.code;
+  if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+  if (/^Digit\d$/.test(c)) return c.slice(5);
+  if (/^F\d{1,2}$/.test(c)) return c;
+  if (/^Numpad\d$/.test(c)) return "NumPad" + c.slice(6);
+  return CODE_KEYS[c] || null;
+}
+let listening = null;
+$$(".keybtn").forEach(b => b.addEventListener("click", () => {
+  if (listening) stopListening(listening, false);
+  listening = b; b.classList.add("listening"); b.textContent = "Press a shortcut…";
+  send("hotkeyCapture", { active: true });
+}));
+function stopListening(b, keep) { b.classList.remove("listening"); listening = null; send("hotkeyCapture", { active: false }); if (!keep) b.textContent = prettyKey(state.settings[b.dataset.key]); }
+window.addEventListener("keydown", e => {
+  if (listening) {
+    e.preventDefault(); e.stopPropagation();
+    if (e.code === "Escape") { stopListening(listening, false); return; }
+    const k = keyFromEvent(e); if (!k) return;
+    const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Win"].filter(Boolean);
+    if (!mods.length && !/^F\d/.test(k)) { listening.textContent = "Add Ctrl, Alt or Shift"; return; }
+    const combo = [...mods, k].join("+");
+    const b = listening; const key = b.dataset.key;
+    const other = key === "SaveHotkey" ? "OverlayHotkey" : "SaveHotkey";
+    if (combo === state.settings[other]) { b.textContent = "Already used above"; return; }
+    stopListening(b, true); $("#keyError").hidden = true; set(key, combo);
+    return;
+  }
+  if (e.code === "Escape") {
+    if ($("#modalRoot").firstChild) { closeModal(); return; }
+    if (state.mode !== "setup") send("hide");
+  }
+  if (e.altKey && e.code === "F4") e.preventDefault();
+}, true);
+
+/* ---------- actions ---------- */
+document.addEventListener("click", e => {
+  const a = e.target.closest("[data-act]"); if (!a) return;
+  e.preventDefault();
+  send(a.dataset.act);
+});
+document.addEventListener("mousedown", e => { if (e.button === 0 && e.target.closest("[data-drag]")) send("drag"); });
+$("#saveBtn").addEventListener("click", () => send("saveClip"));
+$("#repoLink").addEventListener("click", e => { e.preventDefault(); send("openUrl", { url: state.repo }); });
+$("#removeBtn").addEventListener("click", () => modal(
+  state.settings.ObsMode === "mine"
+  ? `<h3>Remove Hindsight?</h3><p>OBS closes for a moment so its settings can be put back, then opens again. Hindsight puts back:</p>
+   <ul><li>your replay buffer and OBS settings</li><li>Xbox Game Bar capture</li><li>startup entries</li></ul>
+   <p>Your clips, scenes and OBS itself stay.</p>`
+  : `<h3>Remove Hindsight?</h3><p>This closes the background OBS and puts back:</p>
+   <ul><li>your OBS settings and last-used profile</li><li>Xbox Game Bar capture</li><li>startup entries</li></ul>
+   <p>Your clips and OBS itself stay.</p>`,
+  [["Cancel", "ghost", closeModal], ["Remove", "danger", () => send("remove")]]));
+
+/* ---------- clips ---------- */
+function renderClips() {
+  const list = $("#clipList"), filters = $("#filters");
+  const clips = state.clips || [];
+  $("#clipCount").textContent = clips.length ? String(clips.length) : "";
+  $("#clipTotals").textContent = clips.length ? `${clips.length} ${clips.length === 1 ? "clip" : "clips"}, ${fmtBytes(state.clipTotal || 0)}` : "";
+  const games = [...new Set(clips.map(c => c.game))].sort((a, b) => a.localeCompare(b));
+  if (state.filter !== "all" && !games.includes(state.filter)) state.filter = "all";
+  filters.innerHTML = "";
+  if (games.length > 1) {
+    for (const g of ["all", ...games]) {
+      const b = document.createElement("button"); b.className = "chip"; b.textContent = g === "all" ? "All games" : g;
+      b.setAttribute("aria-pressed", String(state.filter === g));
+      b.onclick = () => { state.filter = g; renderClips(); };
+      filters.appendChild(b);
+    }
+  }
+  list.innerHTML = "";
+  const shown = clips.filter(c => state.filter === "all" || c.game === state.filter);
+  if (!shown.length) {
+    const s = state.settings;
+    list.innerHTML = `<div class="empty"><h3>No clips yet</h3><p>Press <kbd>${prettyKey(s.SaveHotkey || "Alt+F10")}</kbd> during a game and the last ${fmtLen(s.ClipSeconds || 120)} land here.</p></div>`;
+    return;
+  }
+  let lastDay = null, grid = null;
+  for (const c of shown) {
+    const d = dayLabel(c.saved);
+    if (d !== lastDay) {
+      const h = document.createElement("div"); h.className = "day"; h.textContent = d; list.appendChild(h);
+      grid = document.createElement("div"); grid.className = "grid"; list.appendChild(grid); lastDay = d;
+    }
+    grid.appendChild(clipCard(c));
+  }
+}
+function clipCard(c) {
+  const b = document.createElement("button");
+  b.className = "clip" + (c.path === state.newPath ? " new" : ""); b.dataset.path = c.path;
+  b.innerHTML = `<div class="thumb">${c.thumb ? `<img loading="lazy" alt="">` : ""}${c.seconds ? `<span class="len">${fmtClock(c.seconds)}</span>` : ""}<div class="play"><span><svg width="16" height="16"><use href="#i-play"/></svg></span></div></div>
+    <div class="meta"><b></b><span></span></div>`;
+  if (c.thumb) b.querySelector("img").src = c.thumb;
+  b.querySelector("b").textContent = c.game;
+  b.querySelector(".meta span").textContent = `${fmtTime(c.saved)}, ${fmtBytes(c.size)}`;
+  b.addEventListener("click", () => openPlayer(c));
+  return b;
+}
+function openPlayer(c) {
+  const root = $("#modalRoot");
+  root.innerHTML = `<div class="scrim"><div class="player" role="dialog" aria-label="Clip">
+    ${c.src ? `<video controls autoplay preload="metadata"></video>` : `<div class="empty"><p>This clip is outside the clips folder, so it can't play here.</p></div>`}
+    <div class="bar"><div class="title"><b></b><span></span></div>
+      <button class="btn" data-x="copy" title="Copy the file so you can paste it into Discord"><svg><use href="#i-copy"/></svg>Copy</button>
+      <button class="btn" data-x="reveal"><svg><use href="#i-folder"/></svg>Show in folder</button>
+      <button class="btn" data-x="open"><svg><use href="#i-open"/></svg>Open</button>
+      <button class="btn danger" data-x="delete" aria-label="Delete clip"><svg><use href="#i-trash"/></svg></button>
+    </div></div></div>`;
+  const v = root.querySelector("video");
+  if (v) {
+    const unplayable = why => {
+      if (!v.isConnected || v.dataset.failed) return;
+      v.dataset.failed = "1";
+      const box = document.createElement("div"); box.className = "cant-play";
+      box.innerHTML = `<h3>This clip can't play inside Hindsight</h3><p></p><button class="btn primary"><svg><use href="#i-open"/></svg>Play in your video player</button>`;
+      box.querySelector("p").textContent = why;
+      box.querySelector("button").onclick = () => send("openClip", { path: c.path });
+      v.replaceWith(box);
+    };
+    const reason = c.ext === "mkv"
+      ? "It's an MKV file. The built-in player only handles MP4. Your OBS recording format decides this; it's under Settings > Output > Recording Format in OBS."
+      : "Its video format isn't supported by the built-in player, usually HEVC without Microsoft's HEVC Video Extension. The file itself is fine.";
+    if (c.ext === "mkv") { unplayable(reason); }
+    else {
+      v.addEventListener("error", () => unplayable(reason));
+      // Plays sound but no picture: the codec isn't decodable here.
+      v.addEventListener("loadeddata", () => { if (!v.videoWidth) unplayable(reason); });
+      setTimeout(() => { if (v.readyState === 0 && v.networkState !== 2) unplayable(reason); }, 6000);
+      v.src = c.src;
+    }
+  }
+  root.querySelector(".title b").textContent = c.game;
+  root.querySelector(".title span").textContent = `${dayLabel(c.saved)} at ${fmtTime(c.saved)}, ${fmtBytes(c.size)}${c.seconds ? ", " + fmtClock(c.seconds) : ""}`;
+  root.querySelector(".scrim").addEventListener("click", e => { if (e.target.classList.contains("scrim")) closeModal(); });
+  root.querySelector('[data-x="copy"]').onclick = () => send("copyClip", { path: c.path });
+  root.querySelector('[data-x="reveal"]').onclick = () => send("revealClip", { path: c.path });
+  root.querySelector('[data-x="open"]').onclick = () => { if (v) v.pause(); send("openClip", { path: c.path }); };
+  root.querySelector('[data-x="delete"]').onclick = () => {
+    if (v) v.pause();
+    modal(`<h3>Delete this clip?</h3><p>It goes to the Recycle Bin, so you can get it back.</p>`,
+      [["Cancel", "ghost", () => openPlayer(c)], ["Delete", "danger", () => { closeModal(); send("deleteClip", { path: c.path }); snack("Moved to the Recycle Bin"); }]]);
+  };
+}
+
+/* ---------- modal & snack ---------- */
+function modal(html, buttons) {
+  const root = $("#modalRoot");
+  root.innerHTML = `<div class="scrim"><div class="dialog" role="dialog">${html}<div class="actions"></div></div></div>`;
+  const act = root.querySelector(".actions");
+  for (const [label, kind, fn] of buttons) { const b = document.createElement("button"); b.className = "btn " + kind; b.textContent = label; b.onclick = fn; act.appendChild(b); }
+  if (!buttons.length) act.remove();
+  const last = act.querySelector("button:last-child"); if (last) last.focus();
+}
+function closeModal() { const v = $("#modalRoot video"); if (v) v.pause(); $("#modalRoot").innerHTML = ""; }
+let snackTimer;
+function snack(text) { const s = $("#snack"); s.textContent = text; s.classList.add("show"); clearTimeout(snackTimer); snackTimer = setTimeout(() => s.classList.remove("show"), 2600); }
+function welcomeDialog() {
+  const s = state.settings;
+  modal(`<h3>You're set</h3><p>Hindsight is recording the last ${fmtLen(s.ClipSeconds || 120)} in the background.</p>
+    <p>Press <kbd>${prettyKey(s.SaveHotkey || "Alt+F10")}</kbd> to save a clip, and <kbd>${prettyKey(s.OverlayHotkey || "Alt+X")}</kbd> to open this window.</p>`,
+    [["Got it", "primary", closeModal]]);
+}
+
+/* ---------- the tape ---------- */
+function setTape(t, reset) {
+  state.tape.perSecond = t.perSecond || 4;
+  state.tape.values = (t.values || []).slice();
+  state.tape.bufferedSeconds = t.bufferedSeconds || 0;
+  state.tape.saves = t.saves || [];
+  state.lastBucketAt = performance.now();
+}
+function pushTape(d) {
+  if (d.values && d.values.length) { state.tape.values.push(...d.values); state.lastBucketAt = performance.now(); }
+  const max = 1200 * state.tape.perSecond; if (state.tape.values.length > max) state.tape.values.splice(0, state.tape.values.length - max);
+  state.tape.bufferedSeconds = d.bufferedSeconds; state.tape.saves = d.saves || [];
+  updateCounter();
+}
+function updateCounter() {
+  const len = state.settings.ClipSeconds || 120; const on = state.status.state === "buffering";
+  const have = Math.min(len, state.tape.bufferedSeconds || 0);
+  const big = $("#counter"); big.textContent = fmtClock(on ? have : 0); big.classList.toggle("dim", !on);
+  $("#counterSub").textContent = !on ? "nothing buffered" : have >= len ? "ready to save" : `of ${fmtClock(len)} so far`;
+}
+
+function drawTape(canvas, opts) {
+  const dpr = window.devicePixelRatio || 1; const rect = canvas.getBoundingClientRect();
+  if (!rect.width) return;
+  const W = Math.round(rect.width * dpr), H = Math.round(rect.height * dpr);
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+  const g = canvas.getContext("2d"); g.clearRect(0, 0, W, H);
+  const { values, perSecond, windowSec, buffered, saves, live, frac } = opts;
+  const rulerH = opts.ruler ? 16 * dpr : 0;
+  const top = 8 * dpr, bottom = H - rulerH - 8 * dpr, mid = (top + bottom) / 2, half = (bottom - top) / 2;
+  const bar = 3 * dpr, gap = 2 * dpr, step = bar + gap;
+  const cols = Math.floor((W - 10 * dpr) / step);
+  const bucketsInWindow = windowSec * perSecond;
+  const perCol = bucketsInWindow / cols;
+  const shift = (frac || 0) / perCol * step; // smooth scroll between buckets
+  const n = values.length;
+  const bufferedCols = Math.min(cols, Math.ceil(buffered * perSecond / perCol));
+  for (let c = 0; c < cols; c++) {
+    const fromEnd = c; // 0 = newest
+    const x = W - 10 * dpr - (c + 1) * step + shift;
+    const i1 = n - Math.floor(fromEnd * perCol), i0 = Math.max(0, n - Math.floor((fromEnd + 1) * perCol));
+    let v = -1;
+    for (let i = i0; i < i1; i++) if (values[i] > v) v = values[i];
+    if (i1 <= i0 && i1 > 0 && i1 <= n) v = values[i1 - 1];
+    const inBuffer = live && c < bufferedCols;
+    if (v < 0 || !inBuffer) {
+      g.fillStyle = "rgba(108,102,136,.35)";
+      g.fillRect(x, mid - dpr, bar, 2 * dpr);
+      continue;
+    }
+    const h = Math.max(2 * dpr, Math.pow(v, 1.6) * half);
+    const age = c / cols;
+    const grad = g.createLinearGradient(0, mid - h, 0, mid + h);
+    const a = 0.55 + 0.45 * (1 - age);
+    grad.addColorStop(0, `rgba(255,197,107,${a})`); grad.addColorStop(1, `rgba(255,138,61,${a})`);
+    g.fillStyle = grad;
+    g.beginPath(); g.roundRect ? g.roundRect(x, mid - h, bar, h * 2, bar / 2) : g.rect(x, mid - h, bar, h * 2); g.fill();
+  }
+  // save markers
+  if (live) for (const ago of saves || []) {
+    if (ago > windowSec) continue;
+    const x = W - 10 * dpr - (ago / windowSec) * cols * step;
+    g.fillStyle = "rgba(255,95,109,.9)"; g.fillRect(x, top - 4 * dpr, 2 * dpr, bottom - top + 8 * dpr);
+    g.beginPath(); g.moveTo(x - 4 * dpr, top - 4 * dpr); g.lineTo(x + 6 * dpr, top - 4 * dpr); g.lineTo(x + dpr, top + 3 * dpr); g.fill();
+  }
+  // playhead
+  const px = W - 8 * dpr;
+  g.fillStyle = live ? "#ffb347" : "rgba(155,149,180,.5)";
+  g.shadowColor = "rgba(255,179,71,.8)"; g.shadowBlur = live ? 10 * dpr : 0;
+  g.fillRect(px, top - 2 * dpr, 2 * dpr, bottom - top + 4 * dpr);
+  g.shadowBlur = 0;
+  // ruler
+  if (opts.ruler) {
+    const steps = [5, 10, 15, 30, 60, 120, 300];
+    const target = windowSec / 5; const st = steps.find(s => s >= target) || 300;
+    g.font = `${11 * dpr}px "Segoe UI", sans-serif`; g.textBaseline = "bottom";
+    for (let t = 0; t <= windowSec; t += st) {
+      const x = W - 10 * dpr - (t / windowSec) * cols * step;
+      g.fillStyle = "rgba(108,102,136,.6)"; g.fillRect(x, H - rulerH, dpr, 4 * dpr);
+      const label = t === 0 ? "now" : "-" + fmtClock(t);
+      g.fillStyle = t === 0 ? "rgba(255,179,71,.9)" : "rgba(155,149,180,.8)";
+      g.textAlign = t === 0 ? "right" : "center";
+      if (x > 24 * dpr || t === 0) g.fillText(label, t === 0 ? W - 4 * dpr : x, H - 1 * dpr);
+    }
+  }
+}
+
+function frame(now) {
+  if (state.mode !== "setup" && state.visible) {
+    const live = state.status.state === "buffering";
+    const per = state.tape.perSecond;
+    const frac = live ? Math.min(1, (now - state.lastBucketAt) / (1000 / per)) : 0;
+    drawTape($("#tapeCanvas"), { values: state.tape.values, perSecond: per, windowSec: state.settings.ClipSeconds || 120, buffered: state.tape.bufferedSeconds, saves: state.tape.saves, live, frac, ruler: true });
+  }
+  if (state.mode === "setup") drawDemo(now);
+  requestAnimationFrame(frame);
+}
+// Setup screen: a pretend buffer scrolling by, so the idea is obvious before anything is installed.
+const demo = { values: Array.from({ length: 260 }, (_, i) => Math.max(0, Math.min(1, 0.38 + 0.22 * Math.sin(i / 6) + 0.18 * Math.sin(i / 2.3) + (Math.sin(i * 12.9898) * 43758.5453 % 1) * 0.3))), last: 0 };
+function drawDemo(now) {
+  if (now - demo.last > 120) {
+    demo.last = now; const t = now / 1000;
+    const v = Math.max(0, 0.35 + 0.25 * Math.sin(t * 1.7) + 0.2 * Math.sin(t * 5.3) + (Math.random() - 0.5) * 0.35 + (Math.random() < 0.04 ? 0.5 : 0));
+    demo.values.push(Math.min(1, v)); if (demo.values.length > 400) demo.values.shift();
+  }
+  drawTape($("#demoCanvas"), { values: demo.values, perSecond: 8, windowSec: 30, buffered: 999, saves: [], live: true, frac: (now - demo.last) / 120, ruler: false });
+}
+requestAnimationFrame(frame);
+
+/* ---------- setup flow ---------- */
+function startSetup() {
+  $("#setupIntro").hidden = true; $("#setupRun").hidden = false; $("#setupFail").hidden = true; $("#setupDone").hidden = true;
+  $$("#steps li").forEach(li => { li.dataset.state = "pending"; li.querySelector(".detail").textContent = ""; const p = li.querySelector(".progress"); if (p) p.remove(); });
+  const mine = $("#optMine").checked;
+  $("#configureTitle").textContent = mine ? "Set up clipping in your OBS" : "Create the Hindsight profile";
+  send("setup", { admin: $("#optAdmin").checked, startup: $("#optStartup").checked, mine });
+}
+$("#setupBtn").addEventListener("click", startSetup);
+$("#optMine").addEventListener("change", e => $("#setup").classList.toggle("mine", e.target.checked));
+$("#retryBtn").addEventListener("click", startSetup);
+function setupStep(d) {
+  const li = $(`#steps li[data-id="${d.id}"]`); if (!li) return;
+  li.dataset.state = d.state; li.querySelector(".detail").textContent = d.detail || "";
+  let p = li.querySelector(".progress");
+  if (d.state === "active" && d.progress >= 0) { if (!p) { p = document.createElement("div"); p.className = "progress"; p.innerHTML = "<i></i>"; li.appendChild(p); } p.firstChild.style.width = d.progress + "%"; }
+  else if (p) p.remove();
+  if (d.state === "failed") $("#setupFail").hidden = false;
+}
+
+/* ---------- boot ---------- */
+send("ready");
+</script>
+<script>
+/* Browser preview only: fake data so the interface can be designed outside the app. Never used inside Hindsight. */
+window.Demo = {
+  handle(m) {
+    if (m.type === "ready") {
+      const p = new URLSearchParams(location.search); const mode = p.get("mode") || "app";
+      const day = 864e5, now = Date.now();
+      const games = [["VALORANT", 4], ["Escape from Tarkov", 5], ["Rocket League", 3], ["Counter-Strike 2", 2]];
+      const items = []; let t = now - 1000 * 60 * 7;
+      games.forEach(([g, n], gi) => { for (let i = 0; i < n; i++) { items.push({ path: `C:\\Clips\\${g}\\${i}.mp4`, game: g, size: (60 + Math.random() * 300) * 1048576, saved: t, seconds: [120, 120, 60, 95][i % 4], thumb: Demo.thumb(gi, i), src: null }); t -= day * (Math.random() * 0.6) + 1000 * 60 * 40; } });
+      items.sort((a, b) => b.saved - a.saved);
+      const vals = []; for (let i = 0; i < 480; i++) vals.push(Math.max(0, Math.min(1, 0.4 + 0.25 * Math.sin(i / 9) + (Math.random() - 0.5) * 0.4)));
+      handlers.init({ mode, version: "1.0.0", repo: "https://github.com/RamenNuudlss/Hindsight",
+        status: { state: p.get("state") || "buffering", line: "", detail: p.get("state") === "needsrestart" ? "OBS needs one restart to turn on its replay buffer. Your scenes and projectors come back after." : "", summary: p.get("obs") === "mine" ? "Your OBS: Streaming, TeamSpeak" : "1080p 60 fps, NVIDIA NVENC H.264", obsMode: p.get("obs") || "hindsight", profile: "Streaming", collection: "TeamSpeak" },
+        settings: { ObsMode: p.get("obs") || "hindsight", OpenObsForMe: true, Recording: true, ClipSeconds: 120, Quality: "high", OutputHeight: 1080, Fps: 60, Encoder: "nvenc_h264", CaptureMode: "game", MonitorId: "", DesktopAudio: true, Mic: true, MicDevice: "default", NoiseSuppression: true, SeparateTracks: false, SaveHotkey: "Alt+F10", OverlayHotkey: "Alt+X", SavedSound: true, SavedToast: true, SortByGame: true, LaunchAtLogin: true, ObsAsAdmin: true, EffectiveClipsFolder: "C:\\Users\\RamenNuudls\\Videos\\Clips", hotkeyError: "" },
+        options: { encoders: [{ key: "nvenc_h264", label: "NVIDIA NVENC", codec: "H.264", note: "Plays everywhere. Best for sharing." }, { key: "nvenc_hevc", label: "NVIDIA NVENC", codec: "HEVC", note: "Smaller files." }, { key: "nvenc_av1", label: "NVIDIA NVENC", codec: "AV1", note: "Smallest files." }, { key: "x264", label: "CPU (x264)", codec: "H.264", note: "Uses your processor." }],
+          fps: [30, 60, 120, 144, 240], heights: [{ value: 0, label: "Same as screen", detail: "2560×1440" }, { value: 1080, label: "1080p", detail: "1920×1080" }, { value: 720, label: "720p", detail: "1280×720" }],
+          mics: [{ id: "default", name: "Default" }, { id: "x", name: "Shure MV7" }], monitors: [{ id: "a", name: "Display 1: 2560x1440 (primary)" }], canvas: { w: 2560, h: 1440 }, ramMB: 32768, obsVersion: "31.1.2" },
+        tape: { perSecond: 4, values: vals, bufferedSeconds: 120, saves: [41] } });
+      handlers.clips({ items, total: items.reduce((a, c) => a + c.size, 0) });
+      setInterval(() => { const v = []; v.push(Math.max(0, Math.min(1, 0.45 + (Math.random() - 0.5) * 0.7))); handlers.tape({ values: v, bufferedSeconds: 120, saves: state.tape.saves.map(x => x + 0.25) }); }, 250);
+      if (p.get("page")) showPage(p.get("page"));
+      if (p.get("player")) setTimeout(() => openPlayer(items[0]), 50);
+      if (p.get("step")) { startSetup(); ["obs", "close", "configure"].forEach(id => setupStep({ id, state: "done", detail: { obs: "OBS 31.1.2 found", close: "OBS is ready to configure", configure: "NVIDIA NVENC H.264, 1080p 60 fps" }[id] })); setupStep({ id: "windows", state: "active", detail: "Waiting for the admin prompt…" }); }
+    }
+  },
+  thumb(gi, i) {
+    const c = document.createElement("canvas"); c.width = 320; c.height = 180; const g = c.getContext("2d");
+    const pal = [["#3b1d4a", "#ff4655"], ["#20261b", "#a8b07a"], ["#0b2a4a", "#36a3ff"], ["#2b2416", "#e0a040"]][gi];
+    const gr = g.createLinearGradient(0, 0, 320, 180); gr.addColorStop(0, pal[0]); gr.addColorStop(1, "#0d0b14"); g.fillStyle = gr; g.fillRect(0, 0, 320, 180);
+    g.fillStyle = pal[1]; g.globalAlpha = .55; for (let k = 0; k < 6; k++) { g.beginPath(); g.arc(40 + ((i * 70 + k * 53) % 300), 40 + ((k * 37 + i * 29) % 120), 6 + (k * 7 + i * 3) % 30, 0, 7); g.fill(); }
+    g.globalAlpha = 1; g.strokeStyle = "rgba(255,255,255,.7)"; g.lineWidth = 2; g.beginPath(); g.arc(160, 90, 8, 0, 7); g.stroke();
+    return c.toDataURL("image/jpeg", .8);
+  }
+};
+</script>
+</body>
+</html>
